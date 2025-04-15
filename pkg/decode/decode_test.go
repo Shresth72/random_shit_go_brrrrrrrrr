@@ -43,6 +43,13 @@ func TestDecodeBencodedValue(t *testing.T) {
 		// List parsing
 		{"li25e3:fooi43e5:helloe", []interface{}{25, "foo", 43, "hello"}, false},
 		{"li25e3:fooi43ee5:helloe", []interface{}{25, "foo", 43}, false},
+		{
+			"d3:barli25e3:fooi43e5:helloee",
+			map[string]interface{}(
+				map[string]interface{}{"bar": []interface{}{25, "foo", 43, "hello"}},
+			),
+			false,
+		},
 	}
 
 	for _, test := range tests {
