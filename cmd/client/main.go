@@ -20,7 +20,7 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			encodedValue := args[0]
-			decoded, err := decode.DecodeBencodedValue(encodedValue)
+			decoded, _, err := decode.DecodeBencodedValue(encodedValue)
 			if err != nil {
 				fmt.Println("Error: ", err)
 				os.Exit(1)
