@@ -43,6 +43,7 @@ func TestDecodeBencodedValue(t *testing.T) {
 		// List parsing
 		{"li25e3:fooi43e5:helloe", []interface{}{25, "foo", 43, "hello"}, false},
 		{"li25e3:fooi43ee5:helloe", []interface{}{25, "foo", 43}, false},
+		// Dictionary parsing
 		{
 			"d3:barli25e3:fooi43e5:helloee",
 			map[string]interface{}(
@@ -50,6 +51,7 @@ func TestDecodeBencodedValue(t *testing.T) {
 			),
 			false,
 		},
+		{"di54eli25e3:fooi43e5:helloe", "", true},
 	}
 
 	for _, test := range tests {

@@ -1,62 +1,39 @@
 #![allow(unused_variables)]
-use serde_json;
+use hashes::Hashes;
+use serde::Deserialize;
 use std::env;
 
-#[allow(dead_code)]
-fn decode_bencoded_value(encoded_value: &str) -> (serde_json::Value, &str) {
-    match encoded_value.chars().next() {
-        Some('i') => {
-            if let Some((n, rest)) =
-                encoded_value
-                    .split_at(1)
-                    .1
-                    .split_once('e')
-                    .and_then(|(digits, rest)| {
-                        let n = digits.parse::<i64>().ok()?;
-                        Some((n, rest))
-                    })
-            {
-                return (n.into(), rest);
-            }
-        }
-        Some('l') => {
-            let mut values = Vec::new();
-            let mut rest = encoded_value.split_at(1).1;
-            while !rest.is_empty() && !rest.starts_with('e') {
-                let (v, remainder) = decode_bencoded_value(rest);
-                values.push(v);
-                rest = remainder;
-            }
-            return (values.into(), &rest[1..]);
-        }
-        Some('d') => {
-            let mut dict = serde_json::Map::new();
-            let mut rest = encoded_value.split_at(1).1;
-            while !rest.is_empty() && !rest.starts_with('e') {
-                let (k, remainder) = decode_bencoded_value(rest);
-                let key = match k {
-                    serde_json::Value::String(k) => k,
-                    k => {
-                        panic!("dict keys must be strings, not {k:?}");
-                    }
-                };
-                let (val, remainder) = decode_bencoded_value(remainder);
-                dict.insert(key, val);
-                rest = remainder;
-            }
-            return (dict.into(), &rest[1..]);
-        }
-        Some('0'..='9') => {
-            if let Some((len, rest)) = encoded_value.split_once(':') {
-                if let Ok(len) = len.parse::<usize>() {
-                    return (rest[..len].to_string().into(), &rest[len..]);
-                }
-            }
-        }
-        _ => {}
-    }
+mod decode;
+use decode::decode_bencoded_value;
 
-    panic!("Unhandled encoded value: {}", encoded_value);
+#[derive(Debug, Clone, Deserialize)]
+struct Torrent {
+    announce: reqwest::Url,
+
+    info: Info,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct Info {
+    name: String,
+    #[serde(rename = "piece length")]
+    plength: usize,
+    pieces: Hashes,
+    #[serde(flatten)]
+    key: Keys,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum Keys {
+    SingleFile { length: usize },
+    MultiFile { files: Vec<File> },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct File {
+    length: usize,
+    path: Vec<String>,
 }
 
 fn main() {
@@ -69,5 +46,46 @@ fn main() {
         println!("{}", decoded_value.0.to_string());
     } else {
         println!("Unknown command: {}", args[1]);
+    }
+}
+
+mod hashes {
+    use serde::de::{self, Visitor};
+    use serde::Deserialize;
+    use std::fmt;
+
+    #[derive(Debug, Clone)]
+    pub struct Hashes(Vec<[u8; 20]>);
+    struct HashesVisitor;
+
+    impl<'de> Visitor<'de> for HashesVisitor {
+        type Value = Hashes;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a byte string whose length is a multiple of 20")
+        }
+
+        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if v.len() % 20 != 0 {
+                return Err(E::custom(format!("length is {}", v.len())));
+            }
+            Ok(Hashes(
+                v.chunks_exact(20)
+                    .map(|slice_20| slice_20.try_into().expect("guaranteed to be length of 20"))
+                    .collect(),
+            ))
+        }
+    }
+
+    impl<'de> Deserialize<'de> for Hashes {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            deserializer.deserialize_bytes(HashesVisitor)
+        }
     }
 }
